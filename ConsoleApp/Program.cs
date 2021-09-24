@@ -115,9 +115,7 @@ namespace ConsoleApp
 
         static void Transfer(SqlConnection connection)
         {
-            SqlTransaction transaction = connection.BeginTransaction();
             var command = connection.CreateCommand();
-            command.Transaction = transaction;
             try
             {
                 Console.WriteLine("From account: ");
@@ -132,28 +130,58 @@ namespace ConsoleApp
                     return;
                 }
                 var fromAccBalance = GetAccountBalance(connection, fromacc);
-                if (fromAccBalance < 0 || (fromAccBalance - amount) < 0)
+                var toAccBalance = GetAccountBalance(connection, toacc);
+
+                var fromAccBalanceResult = fromAccBalance - amount;
+                var toAccBalanceResult = toAccBalance + amount;
+
+
+
+                if (fromAccBalanceResult < 0)
                 {
-                    Console.WriteLine("Insufficient funds on balance");
+                    Console.WriteLine("Insufficient funds");
+                    Console.ReadKey();
                     return;
                 }
 
-                
-                command.CommandText = "INSERT INTO Account (Balance) VALUES (Balance - @balance) WHERE Account_Number = @fromaccount";
+                if ((toAccBalance + amount) > 0)
+                {
+                    command.CommandText = "UPDATE Account SET Is_Active = 1 WHERE Account_Number = @toaccount";
+                    command.Parameters.AddWithValue("@toaccount", toacc);
+                    var setnull = command.ExecuteNonQuery();
+                    command.Parameters.Clear();
+
+                }
+
+                if (fromAccBalance == 0 || (fromAccBalance - amount) == 0)
+                {
+                    command.CommandText = "UPDATE Account SET Is_Active = 0 WHERE Account_Number = @fromaccount";
+                    command.Parameters.AddWithValue("@fromaccount", fromacc);
+                    var setnull = command.ExecuteNonQuery();
+                    command.Parameters.Clear();
+
+                }
+
+
+
+                command.CommandText = "UPDATE Account SET Balance = @fromAccBalanceResult WHERE Account_Number = @fromaccount";
                 command.Parameters.AddWithValue("@balance", amount);
                 command.Parameters.AddWithValue("@fromaccount", fromacc);
+                command.Parameters.AddWithValue("@fromAccBalanceResult", fromAccBalanceResult);
                 var credit = command.ExecuteNonQuery();
                 command.Parameters.Clear();
+
                 if (credit == 0)
                 {
                     Console.WriteLine("Withdrawal was not succeeded");
                     return;
                 }
 
-                
-                command.CommandText = "INSERT INTO Account (Balance) VALUES (Balance + @balance) WHERE Account_Number = @toaccount";
+
+                command.CommandText = "UPDATE Account SET Balance = @toAccBalanceResult WHERE Account_Number = @toaccount";
                 command.Parameters.AddWithValue("@balance", amount);
                 command.Parameters.AddWithValue("@toaccount", toacc);
+                command.Parameters.AddWithValue("@toAccBalanceResult", toAccBalanceResult);
                 var debit = command.ExecuteNonQuery();
                 command.Parameters.Clear();
 
@@ -162,12 +190,16 @@ namespace ConsoleApp
                     Console.WriteLine("Replenishment was not succeeded");
                     return;
                 }
+
+                
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
-                transaction.Rollback();
+                
             }
+           
+                   
         }
 
         static decimal GetAccountBalance (SqlConnection connection, string account)
